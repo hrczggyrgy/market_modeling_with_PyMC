@@ -807,7 +807,7 @@ def fit_bayesian_model(data: pd.DataFrame, settings: dict[str, Any]) -> dict[str
         pm.LogNormal("quantity_obs", mu=mu, sigma=sigma, observed=y, dims="obs")
 
         prior = pm.sample_prior_predictive(
-            samples=settings["prior_draws"],
+            draws=settings["prior_draws"],
             random_seed=settings["seed"],
         )
 
