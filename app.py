@@ -79,7 +79,14 @@ ALIASES = {
         "quarter",
         "day",
     ],
-    "unit_price": ["price", "unit price", "price per unit", "price_per_unit", "asp", "selling price"],
+    "unit_price": [
+        "price",
+        "unit price",
+        "price per unit",
+        "price_per_unit",
+        "asp",
+        "selling price",
+    ],
 }
 
 
@@ -186,7 +193,7 @@ def make_synthetic_sample(seed: int = RANDOM_SEED) -> tuple[pd.DataFrame, dict[s
                     0.40,
                     (0.95 + 0.72 * pack_size)
                     * (1 + retailer_price_bias)
-                    * (1 + 0.035 * np.sin(t / 5.0) + rng.normal(0, 0.025))
+                    * (1 + 0.035 * np.sin(t / 5.0) + rng.normal(0, 0.025)),
                 )
                 distribution = np.clip(
                     0.74
@@ -260,7 +267,9 @@ def role_score(series: pd.Series, column: str, role: str) -> tuple[float, str]:
     name = norm(column)
     aliases = [norm(a) for a in ALIASES[role]]
     exact = max((1.0 if name == alias else 0.0 for alias in aliases), default=0.0)
-    partial = max((0.78 if alias in name or name in alias else 0.0 for alias in aliases), default=0.0)
+    partial = max(
+        (0.78 if alias in name or name in alias else 0.0 for alias in aliases), default=0.0
+    )
     name_score = max(exact, partial)
 
     numeric_share = pd.to_numeric(series, errors="coerce").notna().mean()
@@ -271,9 +280,14 @@ def role_score(series: pd.Series, column: str, role: str) -> tuple[float, str]:
     signal = 0.0
     if role == "period" and date_share >= 0.60:
         signal = 0.22
-    elif role in {"sales", "quantity", "unit_price", "stores_listed", "max_stores", "pack_size"} and numeric:
+    elif (
+        role in {"sales", "quantity", "unit_price", "stores_listed", "max_stores", "pack_size"}
+        and numeric
+    ):
         signal = 0.12 if positive_share > 0.50 else 0.03
-    elif role in {"retailer", "brand", "package"} and not numeric and series.nunique(dropna=True) > 1:
+    elif (
+        role in {"retailer", "brand", "package"} and not numeric and series.nunique(dropna=True) > 1
+    ):
         signal = 0.12
 
     score = min(1.0, max(name_score, name_score * 0.78) + signal)
@@ -348,7 +362,9 @@ def parse_period(series: pd.Series) -> pd.Series:
         (r"^(\d{4})(\d{2})$", r"\1-\2-01"),
     ]
     for pattern, replacement in patterns:
-        candidate = pd.to_datetime(text.str.replace(pattern, replacement, regex=True), errors="coerce")
+        candidate = pd.to_datetime(
+            text.str.replace(pattern, replacement, regex=True), errors="coerce"
+        )
         if candidate.notna().mean() > parsed.notna().mean():
             parsed = candidate
     return parsed
@@ -359,7 +375,9 @@ def validate_mapping(raw: pd.DataFrame, mapping: dict[str, str | None]) -> list[
     if raw.empty:
         return [Finding("Blocking", "Empty dataset", "The CSV contains no rows.")]
     if raw.columns.duplicated().any():
-        findings.append(Finding("Blocking", "Duplicate column names", "CSV columns must have unique names."))
+        findings.append(
+            Finding("Blocking", "Duplicate column names", "CSV columns must have unique names.")
+        )
 
     mapped = [c for c in mapping.values() if c]
     duplicates = sorted({c for c in mapped if mapped.count(c) > 1})
@@ -386,11 +404,19 @@ def validate_mapping(raw: pd.DataFrame, mapping: dict[str, str | None]) -> list[
         x = pd.to_numeric(raw[column], errors="coerce")
         if x.notna().mean() < 0.80:
             findings.append(
-                Finding("Blocking", f"Too many invalid {human_role(role)} values", f"Column '{column}' has less than 80% valid numeric values.")
+                Finding(
+                    "Blocking",
+                    f"Too many invalid {human_role(role)} values",
+                    f"Column '{column}' has less than 80% valid numeric values.",
+                )
             )
         if (x <= 0).any():
             findings.append(
-                Finding("Blocking", f"Non-positive {human_role(role)}", f"Column '{column}' contains zero or negative values.")
+                Finding(
+                    "Blocking",
+                    f"Non-positive {human_role(role)}",
+                    f"Column '{column}' contains zero or negative values.",
+                )
             )
 
     unit_price_col = mapping.get("unit_price")
@@ -399,18 +425,32 @@ def validate_mapping(raw: pd.DataFrame, mapping: dict[str, str | None]) -> list[
         unique_prices = p.dropna().nunique()
         if unique_prices < 4:
             findings.append(
-                Finding("Blocking", "Insufficient price variation", "At least four distinct positive prices are required for demand-response analysis.")
+                Finding(
+                    "Blocking",
+                    "Insufficient price variation",
+                    "At least four distinct positive prices are required for demand-response analysis.",
+                )
             )
 
     if len(raw) < 30:
-        findings.append(Finding("Warning", "Small sample", "The dataset is small; prefer pooled or exploratory evidence over fine-grained entity effects."))
+        findings.append(
+            Finding(
+                "Warning",
+                "Small sample",
+                "The dataset is small; prefer pooled or exploratory evidence over fine-grained entity effects.",
+            )
+        )
 
     period_col = mapping.get("period")
     if period_col:
         p = parse_period(raw[period_col])
         if p.notna().mean() < 0.60:
             findings.append(
-                Finding("Warning", "Weak period parsing", "Less than 60% of period values could be converted into dates; trend/seasonality analysis may be unavailable.")
+                Finding(
+                    "Warning",
+                    "Weak period parsing",
+                    "Less than 60% of period values could be converted into dates; trend/seasonality analysis may be unavailable.",
+                )
             )
 
     stores_col = mapping.get("stores_listed")
@@ -421,7 +461,11 @@ def validate_mapping(raw: pd.DataFrame, mapping: dict[str, str | None]) -> list[
         invalid = ((stores < 0) | (maximum <= 0) | (stores > maximum)).sum()
         if invalid:
             findings.append(
-                Finding("Warning", "Invalid store coverage", f"{invalid:,} rows have stores listed outside the valid 0–maximum range; distribution will be unavailable for those rows.")
+                Finding(
+                    "Warning",
+                    "Invalid store coverage",
+                    f"{invalid:,} rows have stores listed outside the valid 0–maximum range; distribution will be unavailable for those rows.",
+                )
             )
 
     return findings
@@ -456,7 +500,9 @@ def canonicalize(raw: pd.DataFrame, mapping_json: str) -> pd.DataFrame:
 
     entity_parts = [c for c in ["brand", "pack_size", "package"] if c in data]
     if entity_parts:
-        data["entity_id"] = data[entity_parts].astype("string").fillna("Unknown").agg(" | ".join, axis=1)
+        data["entity_id"] = (
+            data[entity_parts].astype("string").fillna("Unknown").agg(" | ".join, axis=1)
+        )
     elif "brand" in data:
         data["entity_id"] = data["brand"].astype("string").fillna("Unknown")
 
@@ -473,7 +519,9 @@ def canonicalize(raw: pd.DataFrame, mapping_json: str) -> pd.DataFrame:
         data["sales_contribution"] = data["sales"] / total_sales if total_sales else np.nan
     if "quantity" in data:
         total_quantity = data["quantity"].sum(min_count=1)
-        data["quantity_contribution"] = data["quantity"] / total_quantity if total_quantity else np.nan
+        data["quantity_contribution"] = (
+            data["quantity"] / total_quantity if total_quantity else np.nan
+        )
 
     return data.reset_index(drop=True)
 
@@ -500,18 +548,34 @@ def capability_report(data: pd.DataFrame) -> dict[str, Capability]:
     model_ready = valid_price and len(data.dropna(subset=["quantity", "unit_price"])) >= 30
 
     return {
-        "Performance": Capability(usable("sales") or usable("quantity"), "Requires sales or quantity."),
-        "Pricing": Capability(valid_price, "Requires positive quantity, unit price, and meaningful price variation."),
-        "Distribution": Capability(distribution, "Requires valid stores-listed and maximum-store coverage."),
+        "Performance": Capability(
+            usable("sales") or usable("quantity"), "Requires sales or quantity."
+        ),
+        "Pricing": Capability(
+            valid_price, "Requires positive quantity, unit price, and meaningful price variation."
+        ),
+        "Distribution": Capability(
+            distribution, "Requires valid stores-listed and maximum-store coverage."
+        ),
         "Entity hierarchy": Capability("entity_id" in data, "Requires a usable entity definition."),
-        "Hierarchical price model": Capability(model_ready and entity_support, "Requires at least three supported entities, adequate observations, and within-entity price variation."),
-        "Bayesian demand model": Capability(model_ready, "Requires at least 30 valid positive quantity-price observations and price variation."),
+        "Hierarchical price model": Capability(
+            model_ready and entity_support,
+            "Requires at least three supported entities, adequate observations, and within-entity price variation.",
+        ),
+        "Bayesian demand model": Capability(
+            model_ready,
+            "Requires at least 30 valid positive quantity-price observations and price variation.",
+        ),
         "Scenario analysis": Capability(model_ready, "Requires a fitted Bayesian demand model."),
     }
 
 
 def model_granularity(data: pd.DataFrame) -> str:
-    keys = [c for c in ["entity_id", "retailer", "period"] if c in data.columns and data[c].notna().any()]
+    keys = [
+        c
+        for c in ["entity_id", "retailer", "period"]
+        if c in data.columns and data[c].notna().any()
+    ]
     if not keys:
         return "Unidentified analytical grain"
     duplicates = data.duplicated(keys).mean()
@@ -559,7 +623,7 @@ def get_filter_selections(data: pd.DataFrame, key_prefix: str = "ctx") -> dict[s
                 max_value=high,
                 key=f"{key_prefix}_period",
             )
-            selections["period"] = selected_range
+            selections["period"] = selected_range  # type: ignore[assignment]
     return selections
 
 
@@ -568,14 +632,16 @@ def apply_context_filters(data: pd.DataFrame, selections: dict[str, Any]) -> pd.
     for column, config in selections.items():
         if column == "period":
             if isinstance(config, tuple) and len(config) == 2:
-                result = result[result["period"].between(pd.Timestamp(config[0]), pd.Timestamp(config[1]))]
+                result = result[
+                    result["period"].between(pd.Timestamp(config[0]), pd.Timestamp(config[1]))
+                ]
             continue
-        
+
         if config["type"] == "multiselect":
             if config["values"]:
                 result = result[result[column].astype(str).isin(config["values"])]
             else:
-                result = result.iloc[0:0] # Return empty dataframe if nothing is selected
+                result = result.iloc[0:0]  # Return empty dataframe if nothing is selected
         elif config["type"] == "search" and config["values"]:
             mask = result[column].astype(str).str.contains(config["values"], case=False, na=False)
             result = result[mask]
@@ -601,7 +667,9 @@ def entity_summary(data: pd.DataFrame) -> pd.DataFrame:
     if "sales" in summary:
         total = summary["sales"].sum()
         summary["sales_contribution"] = summary["sales"] / total if total else np.nan
-        summary["sales_rank"] = summary["sales"].rank(method="dense", ascending=False).astype("Int64")
+        summary["sales_rank"] = (
+            summary["sales"].rank(method="dense", ascending=False).astype("Int64")
+        )
     return summary
 
 
@@ -613,7 +681,11 @@ def entity_growth(data: pd.DataFrame) -> pd.DataFrame:
     if not measures:
         return pd.DataFrame()
 
-    grouped = data.groupby(["entity_id", "period"], dropna=False).agg({c: "sum" if c in {"sales", "quantity"} else "mean" for c in measures}).reset_index()
+    grouped = (
+        data.groupby(["entity_id", "period"], dropna=False)
+        .agg({c: "sum" if c in {"sales", "quantity"} else "mean" for c in measures})
+        .reset_index()
+    )
     grouped = grouped.sort_values(["entity_id", "period"])
 
     rows = []
@@ -622,11 +694,17 @@ def entity_growth(data: pd.DataFrame) -> pd.DataFrame:
             continue
         current = g.iloc[-1]
         previous = g.iloc[-2]
-        row = {"entity_id": entity, "current_period": current["period"], "previous_period": previous["period"]}
+        row = {
+            "entity_id": entity,
+            "current_period": current["period"],
+            "previous_period": previous["period"],
+        }
         for measure in measures:
             prior = float(previous[measure])
             now = float(current[measure])
-            row[f"{measure}_growth"] = (now / prior - 1.0) if np.isfinite(prior) and prior != 0 else np.nan
+            row[f"{measure}_growth"] = (
+                (now / prior - 1.0) if np.isfinite(prior) and prior != 0 else np.nan
+            )
         rows.append(row)
     return pd.DataFrame(rows)
 
@@ -638,16 +716,25 @@ def portfolio_table(data: pd.DataFrame) -> pd.DataFrame:
         return base
     if not growth.empty:
         base = base.merge(growth, on="entity_id", how="left")
-        growth_col = "sales_growth" if "sales_growth" in base else "quantity_growth" if "quantity_growth" in base else None
+        growth_col = (
+            "sales_growth"
+            if "sales_growth" in base
+            else "quantity_growth" if "quantity_growth" in base else None
+        )
         if growth_col:
             q = base[growth_col].dropna()
             if not q.empty:
                 median_growth = q.median()
-                median_contribution = base["sales_contribution"].median() if "sales_contribution" in base else np.nan
+                median_contribution = (
+                    base["sales_contribution"].median() if "sales_contribution" in base else np.nan
+                )
                 conditions = [
-                    (base[growth_col] >= median_growth) & (base["sales_contribution"] >= median_contribution),
-                    (base[growth_col] < median_growth) & (base["sales_contribution"] >= median_contribution),
-                    (base[growth_col] >= median_growth) & (base["sales_contribution"] < median_contribution),
+                    (base[growth_col] >= median_growth)
+                    & (base["sales_contribution"] >= median_contribution),
+                    (base[growth_col] < median_growth)
+                    & (base["sales_contribution"] >= median_contribution),
+                    (base[growth_col] >= median_growth)
+                    & (base["sales_contribution"] < median_contribution),
                 ]
                 base["decision_class"] = np.select(
                     conditions,
@@ -684,7 +771,11 @@ def entity_price_support(data: pd.DataFrame) -> pd.DataFrame:
                 "price_mean": p.mean(),
                 "price_cv": p.std() / p.mean() if len(p) > 1 and p.mean() else np.nan,
                 "price_range": p.max() - p.min() if not p.empty else np.nan,
-                "estimable": bool(len(group) >= 8 and p.nunique() >= 4 and (p.std() / p.mean() if len(p) > 1 and p.mean() else 0) >= 0.02),
+                "estimable": bool(
+                    len(group) >= 8
+                    and p.nunique() >= 4
+                    and (p.std() / p.mean() if len(p) > 1 and p.mean() else 0) >= 0.02
+                ),
             }
         )
     return pd.DataFrame(rows)
@@ -700,7 +791,11 @@ def choose_model_complexity(data: pd.DataFrame) -> dict[str, bool]:
         retailer_effect = len(counts) >= 2 and counts.min() >= 12 and len(data) >= 80
     distribution = "distribution" in data.columns and data["distribution"].dropna().nunique() >= 5
     time = "time_index" in data.columns and data["time_index"].dropna().nunique() >= 8
-    season = "period" in data.columns and data["period"].notna().sum() >= 80 and data["period"].dt.month.nunique() >= 6
+    season = (
+        "period" in data.columns
+        and data["period"].notna().sum() >= 80
+        and data["period"].dt.month.nunique() >= 6
+    )
     return {
         "hierarchical_price": hierarchical,
         "retailer_effect": retailer_effect,
@@ -732,7 +827,9 @@ def fit_bayesian_model(data: pd.DataFrame, settings: dict[str, Any]) -> dict[str
     }
 
     if complexity["distribution"]:
-        distribution = subset["distribution"].fillna(subset["distribution"].median()).to_numpy(float)
+        distribution = (
+            subset["distribution"].fillna(subset["distribution"].median()).to_numpy(float)
+        )
         zd, dm, ds = zscore(distribution)
         predictor_data["distribution"] = zd
         standardization.update(distribution_mean=dm, distribution_sd=ds)
@@ -807,14 +904,18 @@ def fit_bayesian_model(data: pd.DataFrame, settings: dict[str, Any]) -> dict[str
             season_idx = pm.Data("season_idx", season_codes.astype("int64"), dims="obs")
             sigma_season = pm.HalfNormal("sigma_season", sigma=0.30)
             z_season = pm.Normal("z_season", mu=0.0, sigma=1.0, dims="season")
-            season_effect = pm.Deterministic("season_effect", sigma_season * z_season, dims="season")
+            season_effect = pm.Deterministic(
+                "season_effect", sigma_season * z_season, dims="season"
+            )
             mu = mu + season_effect[season_idx]
 
         if complexity["retailer_effect"] and retailer_codes is not None:
             retailer_idx = pm.Data("retailer_idx", retailer_codes.astype("int64"), dims="obs")
             sigma_retailer = pm.HalfNormal("sigma_retailer", sigma=0.50)
             z_retailer = pm.Normal("z_retailer", mu=0.0, sigma=1.0, dims="retailer")
-            retailer_effect = pm.Deterministic("retailer_effect", sigma_retailer * z_retailer, dims="retailer")
+            retailer_effect = pm.Deterministic(
+                "retailer_effect", sigma_retailer * z_retailer, dims="retailer"
+            )
             mu = mu + retailer_effect[retailer_idx]
 
         sigma = pm.HalfNormal("sigma", sigma=0.60)
@@ -878,7 +979,9 @@ def posterior_entity_variable(idata: Any, variable: str) -> np.ndarray:
     return arr.reshape(-1, arr.shape[-1])
 
 
-def get_elasticity_draws(result: dict[str, Any], entity: str | None = None) -> tuple[np.ndarray, str]:
+def get_elasticity_draws(
+    result: dict[str, Any], entity: str | None = None
+) -> tuple[np.ndarray, str]:
     idata = result["idata"]
     entities = result["entities"]
 
@@ -894,9 +997,11 @@ def sampling_diagnostics(idata: Any) -> tuple[pd.DataFrame, dict[str, Any]]:
     summary = az.summary(idata, kind="diagnostics", round_to=3)
     sample_stats = idata.sample_stats
 
-    divergence_count = int(np.asarray(sample_stats["diverging"]).sum()) if "diverging" in sample_stats else 0
+    divergence_count = (
+        int(np.asarray(sample_stats["diverging"]).sum()) if "diverging" in sample_stats else 0
+    )
     bfmi_result = az.bfmi(idata)
-    
+
     if hasattr(bfmi_result, "to_array"):
         bfmi_values = np.asarray(bfmi_result.to_array(), dtype=float)
     elif hasattr(bfmi_result, "values"):
@@ -905,15 +1010,23 @@ def sampling_diagnostics(idata: Any) -> tuple[pd.DataFrame, dict[str, Any]]:
         bfmi_values = np.asarray(bfmi_result, dtype=float)
     min_bfmi = float(np.nanmin(bfmi_values)) if bfmi_values.size else np.nan
 
-    rhat_values = summary["r_hat"].dropna() if "r_hat" in summary.columns else pd.Series(dtype=float) 
-    ess_values = summary["ess_bulk"].dropna() if "ess_bulk" in summary.columns else pd.Series(dtype=float)
+    rhat_values = (
+        summary["r_hat"].dropna() if "r_hat" in summary.columns else pd.Series(dtype=float)
+    )
+    ess_values = (
+        summary["ess_bulk"].dropna() if "ess_bulk" in summary.columns else pd.Series(dtype=float)
+    )
 
     max_rhat = float(rhat_values.max()) if not rhat_values.empty else np.nan
     min_ess = float(ess_values.min()) if not ess_values.empty else np.nan
 
     if divergence_count > 0 or (np.isfinite(max_rhat) and max_rhat > 1.05):
         status = "Sampling concerns"
-    elif (np.isfinite(max_rhat) and max_rhat > 1.01) or (np.isfinite(min_ess) and min_ess < 200) or (np.isfinite(min_bfmi) and min_bfmi < 0.30):
+    elif (
+        (np.isfinite(max_rhat) and max_rhat > 1.01)
+        or (np.isfinite(min_ess) and min_ess < 200)
+        or (np.isfinite(min_bfmi) and min_bfmi < 0.30)
+    ):
         status = "Minor concerns"
     else:
         status = "Healthy"
@@ -940,8 +1053,20 @@ def model_adequacy(result: dict[str, Any]) -> dict[str, Any]:
     upper = np.quantile(predicted, 0.95, axis=0)
     coverage = float(np.mean((observed >= lower) & (observed <= upper)))
     corr = safe_corr(pd.Series(np.log(observed)), pd.Series(np.log(np.clip(median, 1e-12, None))))
-    status = "Good" if coverage >= 0.85 and np.isfinite(corr) and corr >= 0.75 else "Mixed" if coverage >= 0.70 else "Weak"
-    return {"status": status, "coverage": coverage, "correlation": corr, "observed": observed, "median": median, "lower": lower, "upper": upper}
+    status = (
+        "Good"
+        if coverage >= 0.85 and np.isfinite(corr) and corr >= 0.75
+        else "Mixed" if coverage >= 0.70 else "Weak"
+    )
+    return {
+        "status": status,
+        "coverage": coverage,
+        "correlation": corr,
+        "observed": observed,
+        "median": median,
+        "lower": lower,
+        "upper": upper,
+    }
 
 
 def posterior_predict_batch(
@@ -972,7 +1097,12 @@ def posterior_predict_batch(
             raise ValueError("Price and distribution scenario arrays must have the same length.")
         updates["x_distribution"] = (dists - stats["distribution_mean"]) / stats["distribution_sd"]
 
-    if complexity["time"] and "x_time" in model.named_vars and "time_index" in row.index and pd.notna(row["time_index"]):
+    if (
+        complexity["time"]
+        and "x_time" in model.named_vars
+        and "time_index" in row.index
+        and pd.notna(row["time_index"])
+    ):
         ztime = (float(row["time_index"]) - stats["time_mean"]) / stats["time_sd"]
         updates["x_time"] = np.full(n, ztime, dtype=float)
 
@@ -1022,7 +1152,9 @@ def posterior_predict(
     distribution: float | None,
 ) -> tuple[np.ndarray, np.ndarray]:
     distributions = None if distribution is None else np.array([distribution], dtype=float)
-    expected, realized = posterior_predict_batch(result, row, np.array([price], dtype=float), distributions)
+    expected, realized = posterior_predict_batch(
+        result, row, np.array([price], dtype=float), distributions
+    )
     return expected[:, 0], realized[:, 0]
 
 
@@ -1051,7 +1183,15 @@ def status_box(title: str, value: str, detail: str = "", kind: str = "neutral") 
     )
 
 
-def uncertainty_band_figure(x: np.ndarray, median: np.ndarray, lower: np.ndarray, upper: np.ndarray, x_title: str, y_title: str, title: str) -> go.Figure:
+def uncertainty_band_figure(
+    x: np.ndarray,
+    median: np.ndarray,
+    lower: np.ndarray,
+    upper: np.ndarray,
+    x_title: str,
+    y_title: str,
+    title: str,
+) -> go.Figure:
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
@@ -1063,7 +1203,9 @@ def uncertainty_band_figure(x: np.ndarray, median: np.ndarray, lower: np.ndarray
             name="90% credible interval",
         )
     )
-    fig.add_trace(go.Scatter(x=x, y=median, mode="lines", name="Posterior median", line=dict(width=3)))
+    fig.add_trace(
+        go.Scatter(x=x, y=median, mode="lines", name="Posterior median", line=dict(width=3))
+    )
     fig.update_layout(
         title=title,
         xaxis_title=x_title,
@@ -1080,7 +1222,9 @@ def uncertainty_band_figure(x: np.ndarray, median: np.ndarray, lower: np.ndarray
 # =============================================================================
 
 
-def page_overview(data: pd.DataFrame, model_result: dict[str, Any] | None, capabilities: dict[str, Capability]) -> None:
+def page_overview(
+    data: pd.DataFrame, model_result: dict[str, Any] | None, capabilities: dict[str, Capability]
+) -> None:
     st.title("Market Modeling")
     st.caption("Bayesian demand intelligence with explicit uncertainty and research diagnostics.")
 
@@ -1106,7 +1250,14 @@ def page_overview(data: pd.DataFrame, model_result: dict[str, Any] | None, capab
         if "period" in data.columns and "sales" in data.columns:
             trend = data.dropna(subset=["period"]).groupby("period", as_index=False)["sales"].sum()
             st.plotly_chart(
-                px.line(trend, x="period", y="sales", markers=True, title="Sales trend", template="plotly_white"),
+                px.line(
+                    trend,
+                    x="period",
+                    y="sales",
+                    markers=True,
+                    title="Sales trend",
+                    template="plotly_white",
+                ),
                 use_container_width=True,
             )
         else:
@@ -1116,13 +1267,24 @@ def page_overview(data: pd.DataFrame, model_result: dict[str, Any] | None, capab
         if "sales" in data and "entity_id" in data:
             top = entity_summary(data).nlargest(10, "sales")
             st.plotly_chart(
-                px.bar(top, x="sales", y="entity_id", orientation="h", title="Largest contributors", template="plotly_white"),
+                px.bar(
+                    top,
+                    x="sales",
+                    y="entity_id",
+                    orientation="h",
+                    title="Largest contributors",
+                    template="plotly_white",
+                ),
                 use_container_width=True,
             )
 
     st.subheader("Analytical readiness")
     cap_rows = [
-        {"Analysis": name, "Status": "Available" if cap.available else "Unavailable", "Reason": cap.reason}
+        {
+            "Analysis": name,
+            "Status": "Available" if cap.available else "Unavailable",
+            "Reason": cap.reason,
+        }
         for name, cap in capabilities.items()
     ]
     st.dataframe(pd.DataFrame(cap_rows), hide_index=True, use_container_width=True)
@@ -1138,8 +1300,18 @@ def page_overview(data: pd.DataFrame, model_result: dict[str, Any] | None, capab
         _, sampling = sampling_diagnostics(model_result["idata"])
         adequacy = model_adequacy(model_result)
         kind = "positive" if sampling["status"] == "Healthy" else "warning"
-        status_box("Sampling", sampling["status"], f"R-hat max {sampling['max_rhat']:.3f} · divergences {sampling['divergences']}", kind)
-        status_box("Predictive adequacy", adequacy["status"], f"90% predictive coverage {fmt_pct(adequacy.get('coverage', np.nan))}", "positive" if adequacy["status"] == "Good" else "warning")
+        status_box(
+            "Sampling",
+            sampling["status"],
+            f"R-hat max {sampling['max_rhat']:.3f} · divergences {sampling['divergences']}",
+            kind,
+        )
+        status_box(
+            "Predictive adequacy",
+            adequacy["status"],
+            f"90% predictive coverage {fmt_pct(adequacy.get('coverage', np.nan))}",
+            "positive" if adequacy["status"] == "Good" else "warning",
+        )
 
     st.info(
         "Interpretation note: price and distribution effects are model-implied observational relationships unless a stronger causal identification strategy is supplied by the data."
@@ -1155,7 +1327,11 @@ def page_performance(data: pd.DataFrame) -> None:
 
     if "decision_class" in table:
         valid = table.dropna(subset=["sales_contribution"])
-        growth_col = "sales_growth" if "sales_growth" in valid else "quantity_growth" if "quantity_growth" in valid else None
+        growth_col = (
+            "sales_growth"
+            if "sales_growth" in valid
+            else "quantity_growth" if "quantity_growth" in valid else None
+        )
         if growth_col and len(valid) >= 4:
             fig = px.scatter(
                 valid,
@@ -1172,12 +1348,16 @@ def page_performance(data: pd.DataFrame) -> None:
             fig.update_yaxes(tickformat=".1%")
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("Not enough sequential history is available for a growth-based decision matrix.")
+            st.info(
+                "Not enough sequential history is available for a growth-based decision matrix."
+            )
 
     search = st.text_input("Search entities", placeholder="Start typing...")
     display = table.copy()
     if search:
-        display = display[display["entity_id"].astype(str).str.contains(search, case=False, na=False)]
+        display = display[
+            display["entity_id"].astype(str).str.contains(search, case=False, na=False)
+        ]
 
     st.dataframe(display, hide_index=True, use_container_width=True)
     st.download_button(
@@ -1204,10 +1384,16 @@ def page_pricing(data: pd.DataFrame, result: dict[str, Any]) -> None:
         return
 
     if "retailer" in subset.columns and subset["retailer"].nunique() > 1:
-        retailer = st.selectbox("Retailer context", sorted(subset["retailer"].dropna().astype(str).unique()))
+        retailer = st.selectbox(
+            "Retailer context", sorted(subset["retailer"].dropna().astype(str).unique())
+        )
         subset = subset[subset["retailer"].astype(str) == retailer]
 
-    row = subset.sort_values("period").iloc[-1] if "period" in subset.columns and subset["period"].notna().any() else subset.iloc[-1]
+    row = (
+        subset.sort_values("period").iloc[-1]
+        if "period" in subset.columns and subset["period"].notna().any()
+        else subset.iloc[-1]
+    )
     elasticity_draws, interpretation = get_elasticity_draws(result, entity)
     support = entity_price_support(data)
     support_row = support[support["entity_id"] == entity]
@@ -1224,15 +1410,25 @@ def page_pricing(data: pd.DataFrame, result: dict[str, Any]) -> None:
 
     if not support_row.empty:
         sr = support_row.iloc[0]
-        reliability = "High" if sr["estimable"] and sr["observations"] >= 18 and sr["price_cv"] >= 0.05 else "Medium" if sr["estimable"] else "Insufficient evidence"
+        reliability = (
+            "High"
+            if sr["estimable"] and sr["observations"] >= 18 and sr["price_cv"] >= 0.05
+            else "Medium" if sr["estimable"] else "Insufficient evidence"
+        )
         status_box(
             "Entity price evidence",
             reliability,
             f"{int(sr['observations'])} observations · {int(sr['price_points'])} price points · price CV {fmt_pct(sr['price_cv'])}",
-            "positive" if reliability == "High" else "warning" if reliability == "Medium" else "negative",
+            (
+                "positive"
+                if reliability == "High"
+                else "warning" if reliability == "Medium" else "negative"
+            ),
         )
         if reliability == "Insufficient evidence":
-            st.warning("The hierarchical model can still use this entity through partial pooling, but entity-specific evidence is limited. Treat its posterior as shrinkage-informed rather than strongly data-dominant.")
+            st.warning(
+                "The hierarchical model can still use this entity through partial pooling, but entity-specific evidence is limited. Treat its posterior as shrinkage-informed rather than strongly data-dominant."
+            )
 
     st.subheader("Price-response analysis")
     current_price = float(row["unit_price"])
@@ -1240,7 +1436,11 @@ def page_pricing(data: pd.DataFrame, result: dict[str, Any]) -> None:
     high_price = current_price * 1.25
     price_grid = np.linspace(low_price, high_price, 25)
 
-    base_dist = float(row["distribution"]) if "distribution" in row.index and pd.notna(row.get("distribution")) else None
+    base_dist = (
+        float(row["distribution"])
+        if "distribution" in row.index and pd.notna(row.get("distribution"))
+        else None
+    )
     dist_grid = None if base_dist is None else np.full(len(price_grid), base_dist, dtype=float)
     expected_draws, _ = posterior_predict_batch(result, row, price_grid, dist_grid)
     expected_rows = [
@@ -1271,7 +1471,9 @@ def page_pricing(data: pd.DataFrame, result: dict[str, Any]) -> None:
     best_price = float(curve.iloc[best_idx]["price"])
     comparison_prices = np.array([current_price, best_price], dtype=float)
     comparison_dist = None if base_dist is None else np.array([base_dist, base_dist], dtype=float)
-    comparison_expected, _ = posterior_predict_batch(result, row, comparison_prices, comparison_dist)
+    comparison_expected, _ = posterior_predict_batch(
+        result, row, comparison_prices, comparison_dist
+    )
     baseline_expected = comparison_expected[:, 0]
     scenario_expected = comparison_expected[:, 1]
     baseline_revenue = baseline_expected * current_price
@@ -1279,15 +1481,23 @@ def page_pricing(data: pd.DataFrame, result: dict[str, Any]) -> None:
 
     a, b, c = st.columns(3)
     a.metric("Posterior-median revenue peak", f"${best_price:.2f}")
-    b.metric("Expected revenue change vs current", fmt_pct(float(np.median(scenario_revenue / baseline_revenue - 1))))
+    b.metric(
+        "Expected revenue change vs current",
+        fmt_pct(float(np.median(scenario_revenue / baseline_revenue - 1))),
+    )
     c.metric("P(revenue improves)", fmt_pct(float(np.mean(scenario_revenue > baseline_revenue))))
 
-    st.caption("The revenue peak is a posterior scenario comparison, not a guaranteed optimal price. Uncertainty and model specification matter.")
+    st.caption(
+        "The revenue peak is a posterior scenario comparison, not a guaranteed optimal price. Uncertainty and model specification matter."
+    )
 
 
 def page_distribution(data: pd.DataFrame, result: dict[str, Any]) -> None:
     st.title("Distribution intelligence")
-    if "distribution" not in result["data"].columns or "beta_distribution" not in result["idata"].posterior:
+    if (
+        "distribution" not in result["data"].columns
+        or "beta_distribution" not in result["idata"].posterior
+    ):
         st.warning("Distribution response was not included in the fitted model.")
         return
 
@@ -1296,18 +1506,24 @@ def page_distribution(data: pd.DataFrame, result: dict[str, Any]) -> None:
     subset = data[data["entity_id"].astype(str) == entity].copy()
     if subset.empty:
         return
-    row = subset.sort_values("period").iloc[-1] if "period" in subset.columns and subset["period"].notna().any() else subset.iloc[-1]
+    row = (
+        subset.sort_values("period").iloc[-1]
+        if "period" in subset.columns and subset["period"].notna().any()
+        else subset.iloc[-1]
+    )
     current_distribution = float(row["distribution"])
 
     dist_grid = np.linspace(0.20, 1.0, 25)
     prices = np.full(len(dist_grid), float(row["unit_price"]), dtype=float)
     expected_draws, _ = posterior_predict_batch(result, row, prices, dist_grid)
-    curve = pd.DataFrame({
-        "distribution": dist_grid,
-        "quantity": np.median(expected_draws, axis=0),
-        "q_lo": np.quantile(expected_draws, 0.05, axis=0),
-        "q_hi": np.quantile(expected_draws, 0.95, axis=0),
-    })
+    curve = pd.DataFrame(
+        {
+            "distribution": dist_grid,
+            "quantity": np.median(expected_draws, axis=0),
+            "q_lo": np.quantile(expected_draws, 0.05, axis=0),
+            "q_hi": np.quantile(expected_draws, 0.95, axis=0),
+        }
+    )
 
     st.plotly_chart(
         uncertainty_band_figure(
@@ -1322,21 +1538,32 @@ def page_distribution(data: pd.DataFrame, result: dict[str, Any]) -> None:
         use_container_width=True,
     )
 
-    current_expected, _ = posterior_predict(result, row, float(row["unit_price"]), current_distribution)
+    current_expected, _ = posterior_predict(
+        result, row, float(row["unit_price"]), current_distribution
+    )
     target_distribution = float(np.clip(current_distribution + 0.10, 0, 1))
-    scenario_expected, _ = posterior_predict(result, row, float(row["unit_price"]), target_distribution)
+    scenario_expected, _ = posterior_predict(
+        result, row, float(row["unit_price"]), target_distribution
+    )
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Current distribution", fmt_pct(current_distribution))
-    c2.metric("Illustrative +10pp response", fmt_pct(float(np.median(scenario_expected / current_expected - 1))))
+    c2.metric(
+        "Illustrative +10pp response",
+        fmt_pct(float(np.median(scenario_expected / current_expected - 1))),
+    )
     c3.metric("P(improvement)", fmt_pct(float(np.mean(scenario_expected > current_expected))))
 
-    st.info("Distribution results are model-implied observational relationships. They should not be interpreted as causal incremental sales without stronger identification.")
+    st.info(
+        "Distribution results are model-implied observational relationships. They should not be interpreted as causal incremental sales without stronger identification."
+    )
 
 
 def page_scenarios(data: pd.DataFrame, result: dict[str, Any]) -> None:
     st.title("Scenario studio")
-    st.caption("Compare baseline and alternative commercial conditions through the fitted posterior.")
+    st.caption(
+        "Compare baseline and alternative commercial conditions through the fitted posterior."
+    )
 
     entity = st.selectbox("Entity", sorted(result["entities"]), key="scenario_entity")
     subset = data[data["entity_id"].astype(str) == entity].copy()
@@ -1344,12 +1571,24 @@ def page_scenarios(data: pd.DataFrame, result: dict[str, Any]) -> None:
         return
 
     if "retailer" in subset.columns and subset["retailer"].nunique() > 1:
-        retailer = st.selectbox("Retailer context", sorted(subset["retailer"].dropna().astype(str).unique()), key="scenario_retailer")
+        retailer = st.selectbox(
+            "Retailer context",
+            sorted(subset["retailer"].dropna().astype(str).unique()),
+            key="scenario_retailer",
+        )
         subset = subset[subset["retailer"].astype(str) == retailer]
 
-    row = subset.sort_values("period").iloc[-1] if "period" in subset.columns and subset["period"].notna().any() else subset.iloc[-1]
+    row = (
+        subset.sort_values("period").iloc[-1]
+        if "period" in subset.columns and subset["period"].notna().any()
+        else subset.iloc[-1]
+    )
     base_price = float(row["unit_price"])
-    base_distribution = float(row["distribution"]) if "distribution" in row.index and pd.notna(row.get("distribution")) else None
+    base_distribution = (
+        float(row["distribution"])
+        if "distribution" in row.index and pd.notna(row.get("distribution"))
+        else None
+    )
 
     left, right = st.columns(2)
     scenario_price = left.number_input(
@@ -1361,12 +1600,21 @@ def page_scenarios(data: pd.DataFrame, result: dict[str, Any]) -> None:
     )
     scenario_distribution = None
     if base_distribution is not None and result["complexity"]["distribution"]:
-        scenario_distribution = right.slider("Scenario distribution", 0.01, 1.0, min(max(base_distribution, 0.01), 1.0), 0.01)
+        scenario_distribution = right.slider(
+            "Scenario distribution", 0.01, 1.0, min(max(base_distribution, 0.01), 1.0), 0.01
+        )
 
     run = st.button("Run posterior scenario", type="primary", use_container_width=True)
     if not run:
         baseline_expected, _ = posterior_predict(result, row, base_price, base_distribution)
-        st.info(f"Baseline context loaded. Current price ${base_price:.2f}" + (f" · current distribution {fmt_pct(base_distribution)}" if base_distribution is not None else ""))
+        st.info(
+            f"Baseline context loaded. Current price ${base_price:.2f}"
+            + (
+                f" · current distribution {fmt_pct(base_distribution)}"
+                if base_distribution is not None
+                else ""
+            )
+        )
         return
 
     scenario_prices = np.array([base_price, float(scenario_price)], dtype=float)
@@ -1374,7 +1622,9 @@ def page_scenarios(data: pd.DataFrame, result: dict[str, Any]) -> None:
         scenario_dists = None
     else:
         scenario_dists = np.array([base_distribution, scenario_distribution], dtype=float)
-    expected_matrix, realized_matrix = posterior_predict_batch(result, row, scenario_prices, scenario_dists)
+    expected_matrix, realized_matrix = posterior_predict_batch(
+        result, row, scenario_prices, scenario_dists
+    )
     baseline_expected = expected_matrix[:, 0]
     scenario_expected = expected_matrix[:, 1]
     scenario_realized = realized_matrix[:, 1]
@@ -1386,7 +1636,13 @@ def page_scenarios(data: pd.DataFrame, result: dict[str, Any]) -> None:
 
     rows = []
     for metric, base, scen, base_pred, scen_pred in [
-        ("Expected quantity", baseline_expected, scenario_expected, baseline_expected, scenario_expected),
+        (
+            "Expected quantity",
+            baseline_expected,
+            scenario_expected,
+            baseline_expected,
+            scenario_expected,
+        ),
         ("Expected sales", baseline_revenue, scenario_revenue, baseline_revenue, scenario_revenue),
     ]:
         delta = scen / base - 1
@@ -1423,7 +1679,9 @@ def page_scenarios(data: pd.DataFrame, result: dict[str, Any]) -> None:
         c2.metric("Distribution change", "—")
     c3.metric("P(sales improve)", fmt_pct(float(np.mean(scenario_revenue > baseline_revenue))))
 
-    st.caption("Expected outcomes use posterior parameter uncertainty. Future realized demand additionally contains observation noise. The model is not refit for a scenario.")
+    st.caption(
+        "Expected outcomes use posterior parameter uncertainty. Future realized demand additionally contains observation noise. The model is not refit for a scenario."
+    )
 
 
 def page_model_health(result: dict[str, Any], synthetic_truth: dict[str, float] | None) -> None:
@@ -1442,25 +1700,43 @@ def page_model_health(result: dict[str, Any], synthetic_truth: dict[str, float] 
     c6.metric("Predictive adequacy", adequacy["status"])
 
     if diagnostics["divergences"] > 0:
-        st.error("Divergences were detected. Treat posterior-based decisions as unreliable until the model geometry is addressed.")
+        st.error(
+            "Divergences were detected. Treat posterior-based decisions as unreliable until the model geometry is addressed."
+        )
 
     if adequacy["status"] != "Unavailable":
         st.subheader("Posterior predictive check")
         ppc = adequacy
-        scatter = pd.DataFrame({
-            "Observed": np.log(ppc["observed"]),
-            "Predicted median": np.log(np.clip(ppc["median"], 1e-12, None)),
-            "Lower": np.log(np.clip(ppc["lower"], 1e-12, None)),
-            "Upper": np.log(np.clip(ppc["upper"], 1e-12, None)),
-        })
+        scatter = pd.DataFrame(
+            {
+                "Observed": np.log(ppc["observed"]),
+                "Predicted median": np.log(np.clip(ppc["median"], 1e-12, None)),
+                "Lower": np.log(np.clip(ppc["lower"], 1e-12, None)),
+                "Upper": np.log(np.clip(ppc["upper"], 1e-12, None)),
+            }
+        )
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=scatter["Observed"], y=scatter["Predicted median"], mode="markers", name="Observation"))
+        fig.add_trace(
+            go.Scatter(
+                x=scatter["Observed"],
+                y=scatter["Predicted median"],
+                mode="markers",
+                name="Observation",
+            )
+        )
         mn = min(scatter["Observed"].min(), scatter["Predicted median"].min())
         mx = max(scatter["Observed"].max(), scatter["Predicted median"].max())
         fig.add_trace(go.Scatter(x=[mn, mx], y=[mn, mx], mode="lines", name="Perfect fit"))
-        fig.update_layout(title="Observed vs posterior predictive median (log scale)", xaxis_title="Observed log quantity", yaxis_title="Predicted log quantity", template="plotly_white")
+        fig.update_layout(
+            title="Observed vs posterior predictive median (log scale)",
+            xaxis_title="Observed log quantity",
+            yaxis_title="Predicted log quantity",
+            template="plotly_white",
+        )
         st.plotly_chart(fig, use_container_width=True)
-        st.caption(f"90% posterior predictive coverage: {fmt_pct(ppc['coverage'])} · observed/predicted correlation: {ppc['correlation']:.2f}")
+        st.caption(
+            f"90% posterior predictive coverage: {fmt_pct(ppc['coverage'])} · observed/predicted correlation: {ppc['correlation']:.2f}"
+        )
 
     st.subheader("Model specification")
     complexity = result["complexity"]
@@ -1468,11 +1744,31 @@ def page_model_health(result: dict[str, Any], synthetic_truth: dict[str, float] 
         [
             ["Response", "Quantity", "LogNormal likelihood on original scale"],
             ["Price", "log(price) centered", "Elasticity parameterization"],
-            ["Entity elasticity", "Enabled" if complexity["hierarchical_price"] else "Pooled", "Partial pooling when data support it"],
-            ["Retailer effect", "Enabled" if complexity["retailer_effect"] else "Not used", "Hierarchical intercept"],
-            ["Distribution", "Enabled" if complexity["distribution"] else "Not used", "Standardized observational predictor"],
-            ["Time trend", "Enabled" if complexity["time"] else "Not used", "Standardized time index"],
-            ["Seasonality", "Enabled" if complexity["season"] else "Not used", "Monthly hierarchical effects"],
+            [
+                "Entity elasticity",
+                "Enabled" if complexity["hierarchical_price"] else "Pooled",
+                "Partial pooling when data support it",
+            ],
+            [
+                "Retailer effect",
+                "Enabled" if complexity["retailer_effect"] else "Not used",
+                "Hierarchical intercept",
+            ],
+            [
+                "Distribution",
+                "Enabled" if complexity["distribution"] else "Not used",
+                "Standardized observational predictor",
+            ],
+            [
+                "Time trend",
+                "Enabled" if complexity["time"] else "Not used",
+                "Standardized time index",
+            ],
+            [
+                "Seasonality",
+                "Enabled" if complexity["season"] else "Not used",
+                "Monthly hierarchical effects",
+            ],
         ],
         columns=["Component", "Status", "Method"],
     )
@@ -1495,7 +1791,9 @@ def page_model_health(result: dict[str, Any], synthetic_truth: dict[str, float] 
 def page_research_validation(result: dict[str, Any], truth: dict[str, float]) -> None:
     st.subheader("Research validation — synthetic ground truth")
     if "elasticity_entity" not in result["idata"].posterior:
-        st.info("Entity-level elasticity was not enabled for this fit, so ground-truth recovery cannot be assessed at entity level.")
+        st.info(
+            "Entity-level elasticity was not enabled for this fit, so ground-truth recovery cannot be assessed at entity level."
+        )
         return
 
     rows = []
@@ -1520,7 +1818,9 @@ def page_research_validation(result: dict[str, Any], truth: dict[str, float]) ->
     st.dataframe(table, hide_index=True, use_container_width=True)
     if not table.empty:
         st.metric("90% interval coverage", fmt_pct(table["Covered"].mean()))
-        st.caption("This research view is only available for the built-in synthetic dataset because the true generating parameters are known there.")
+        st.caption(
+            "This research view is only available for the built-in synthetic dataset because the true generating parameters are known there."
+        )
 
 
 def page_data(
@@ -1547,7 +1847,19 @@ def page_data(
     st.dataframe(mapping_table, hide_index=True, use_container_width=True)
 
     st.subheader("Data quality")
-    finding_table = pd.DataFrame([asdict(f) for f in findings]) if findings else pd.DataFrame([{"severity": "Information", "issue": "No findings", "detail": "No blocking or warning conditions were detected during setup."}])
+    finding_table = (
+        pd.DataFrame([asdict(f) for f in findings])
+        if findings
+        else pd.DataFrame(
+            [
+                {
+                    "severity": "Information",
+                    "issue": "No findings",
+                    "detail": "No blocking or warning conditions were detected during setup.",
+                }
+            ]
+        )
+    )
     st.dataframe(finding_table, hide_index=True, use_container_width=True)
 
     st.subheader("Missingness")
@@ -1556,7 +1868,9 @@ def page_data(
 
     if "sales" in data.columns and "quantity" in data.columns and "unit_price" in data.columns:
         valid = (data["quantity"] > 0) & (data["unit_price"] > 0) & data["sales"].notna()
-        ratio = data.loc[valid, "sales"] / (data.loc[valid, "quantity"] * data.loc[valid, "unit_price"])
+        ratio = data.loc[valid, "sales"] / (
+            data.loc[valid, "quantity"] * data.loc[valid, "unit_price"]
+        )
         st.subheader("Sales consistency")
         st.write(
             f"Median Sales ÷ (Quantity × Unit price): {ratio.median():.3f} · within ±5%: {np.mean(np.abs(ratio - 1) <= 0.05):.1%} · within ±10%: {np.mean(np.abs(ratio - 1) <= 0.10):.1%}"
@@ -1619,7 +1933,9 @@ def reset_dataset() -> None:
 def page_choose_data() -> None:
     st.title("Market Modeling")
     st.markdown("### Build a Bayesian demand model from your own CSV")
-    st.caption("Upload market data or use the synthetic research sample. The sample follows the same pipeline as user data and includes known ground truth for model-recovery testing.")
+    st.caption(
+        "Upload market data or use the synthetic research sample. The sample follows the same pipeline as user data and includes known ground truth for model-recovery testing."
+    )
 
     left, right = st.columns(2)
     with left:
@@ -1629,7 +1945,9 @@ def page_choose_data() -> None:
             st.session_state.synthetic_truth = truth
             st.session_state.stage = "mapping"
             st.rerun()
-        st.info("The synthetic sample contains repeated entity-retailer-month observations, price variation, distribution variation, seasonality, and known true elasticities.")
+        st.info(
+            "The synthetic sample contains repeated entity-retailer-month observations, price variation, distribution variation, seasonality, and known true elasticities."
+        )
 
     with right:
         upload = st.file_uploader("Upload CSV", type=["csv"], label_visibility="visible")
@@ -1678,7 +1996,19 @@ def page_mapping() -> None:
         st.error(f"One CSV column cannot map to multiple roles: {', '.join(duplicates)}")
 
     findings = validate_mapping(raw, mapping)
-    finding_df = pd.DataFrame([asdict(f) for f in findings]) if findings else pd.DataFrame([{"severity": "Information", "issue": "Validation passed", "detail": "The mapped schema passed initial checks."}])
+    finding_df = (
+        pd.DataFrame([asdict(f) for f in findings])
+        if findings
+        else pd.DataFrame(
+            [
+                {
+                    "severity": "Information",
+                    "issue": "Validation passed",
+                    "detail": "The mapped schema passed initial checks.",
+                }
+            ]
+        )
+    )
     st.subheader("Validation")
     st.dataframe(finding_df, hide_index=True, use_container_width=True)
 
@@ -1697,16 +2027,26 @@ def page_mapping() -> None:
 
 def fit_panel(data: pd.DataFrame, fingerprint_value: str) -> None:
     st.sidebar.subheader("Bayesian model")
-    
+
     max_cores = max(1, os.cpu_count() or 1)
-    
+
     settings = {
-        "draws": st.sidebar.select_slider("Posterior draws", options=[300, 500, 800, 1200], value=500),
+        "draws": st.sidebar.select_slider(
+            "Posterior draws", options=[300, 500, 800, 1200], value=500
+        ),
         "tune": st.sidebar.select_slider("Tuning steps", options=[300, 500, 800, 1200], value=500),
         "chains": st.sidebar.selectbox("Chains", [2, 3, 4], index=0),
-        "cores": st.sidebar.slider("Sampling cores", min_value=1, max_value=max_cores, value=1, help="Increase for faster sampling if your system supports it. Leave at 1 if the app hangs."),
+        "cores": st.sidebar.slider(
+            "Sampling cores",
+            min_value=1,
+            max_value=max_cores,
+            value=1,
+            help="Increase for faster sampling if your system supports it. Leave at 1 if the app hangs.",
+        ),
         "target_accept": st.sidebar.slider("Target acceptance", 0.85, 0.99, 0.92, 0.01),
-        "prior_draws": st.sidebar.select_slider("Prior predictive draws", options=[50, 100, 200], value=100),
+        "prior_draws": st.sidebar.select_slider(
+            "Prior predictive draws", options=[50, 100, 200], value=100
+        ),
         "seed": RANDOM_SEED,
     }
 
