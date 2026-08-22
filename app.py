@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import re
 import traceback
 from dataclasses import asdict, dataclass
@@ -28,7 +29,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-APP_VERSION = "3.0.0"
+APP_VERSION = "3.1.0"
 RANDOM_SEED = 2026
 
 SEMANTIC_ROLES = [
@@ -524,14 +525,14 @@ def model_granularity(data: pd.DataFrame) -> str:
 # =============================================================================
 
 
-def filter_context(data: pd.DataFrame, key_prefix: str = "ctx") -> pd.DataFrame:
-    result = data.copy()
+def get_filter_selections(data: pd.DataFrame, key_prefix: str = "ctx") -> dict[str, Any]:
+    selections = {}
     with st.sidebar:
         st.markdown("### Analysis context")
         for column in ["retailer", "brand", "entity_id"]:
-            if column not in result.columns:
+            if column not in data.columns:
                 continue
-            values = sorted(result[column].dropna().astype(str).unique().tolist())
+            values = sorted(data[column].dropna().astype(str).unique().tolist())
             if len(values) <= 60:
                 selected_values = st.multiselect(
                     human_role(column),
@@ -539,21 +540,18 @@ def filter_context(data: pd.DataFrame, key_prefix: str = "ctx") -> pd.DataFrame:
                     default=values,
                     key=f"{key_prefix}_{column}",
                 )
-                if selected_values:
-                    result = result[result[column].astype(str).isin(selected_values)]
+                selections[column] = {"type": "multiselect", "values": selected_values}
             else:
                 search_text = st.text_input(
                     f"Search {human_role(column)}",
                     key=f"{key_prefix}_{column}_search",
                     placeholder="Type to filter...",
                 )
-                if search_text:
-                    mask = result[column].astype(str).str.contains(search_text, case=False, na=False)
-                    result = result[mask]
+                selections[column] = {"type": "search", "values": search_text}
 
-        if "period" in result.columns and result["period"].notna().any():
-            low = result["period"].min().date()
-            high = result["period"].max().date()
+        if "period" in data.columns and data["period"].notna().any():
+            low = data["period"].min().date()
+            high = data["period"].max().date()
             selected_range = st.date_input(
                 "Period range",
                 value=(low, high),
@@ -561,9 +559,26 @@ def filter_context(data: pd.DataFrame, key_prefix: str = "ctx") -> pd.DataFrame:
                 max_value=high,
                 key=f"{key_prefix}_period",
             )
-            if isinstance(selected_range, tuple) and len(selected_range) == 2:
-                result = result[result["period"].between(pd.Timestamp(selected_range[0]), pd.Timestamp(selected_range[1]))]
+            selections["period"] = selected_range
+    return selections
 
+
+def apply_context_filters(data: pd.DataFrame, selections: dict[str, Any]) -> pd.DataFrame:
+    result = data.copy()
+    for column, config in selections.items():
+        if column == "period":
+            if isinstance(config, tuple) and len(config) == 2:
+                result = result[result["period"].between(pd.Timestamp(config[0]), pd.Timestamp(config[1]))]
+            continue
+        
+        if config["type"] == "multiselect":
+            if config["values"]:
+                result = result[result[column].astype(str).isin(config["values"])]
+            else:
+                result = result.iloc[0:0] # Return empty dataframe if nothing is selected
+        elif config["type"] == "search" and config["values"]:
+            mask = result[column].astype(str).str.contains(config["values"], case=False, na=False)
+            result = result[mask]
     return result
 
 
@@ -815,7 +830,7 @@ def fit_bayesian_model(data: pd.DataFrame, settings: dict[str, Any]) -> dict[str
             draws=settings["draws"],
             tune=settings["tune"],
             chains=settings["chains"],
-            cores=1,
+            cores=settings.get("cores", 1),
             target_accept=settings["target_accept"],
             random_seed=settings["seed"],
             progressbar=False,
@@ -881,7 +896,7 @@ def sampling_diagnostics(idata: Any) -> tuple[pd.DataFrame, dict[str, Any]]:
 
     divergence_count = int(np.asarray(sample_stats["diverging"]).sum()) if "diverging" in sample_stats else 0
     bfmi_result = az.bfmi(idata)
-    # Handle both old (DataArray) and new (DataTree) return types
+    
     if hasattr(bfmi_result, "to_array"):
         bfmi_values = np.asarray(bfmi_result.to_array(), dtype=float)
     elif hasattr(bfmi_result, "values"):
@@ -890,8 +905,8 @@ def sampling_diagnostics(idata: Any) -> tuple[pd.DataFrame, dict[str, Any]]:
         bfmi_values = np.asarray(bfmi_result, dtype=float)
     min_bfmi = float(np.nanmin(bfmi_values)) if bfmi_values.size else np.nan
 
-    rhat_values = summary["r_hat"].dropna() if "r_hat" in summary.columns else pd.Series(dtype=float)  # type: ignore[call-arg]
-    ess_values = summary["ess_bulk"].dropna() if "ess_bulk" in summary.columns else pd.Series(dtype=float)  # type: ignore[call-arg]
+    rhat_values = summary["r_hat"].dropna() if "r_hat" in summary.columns else pd.Series(dtype=float) 
+    ess_values = summary["ess_bulk"].dropna() if "ess_bulk" in summary.columns else pd.Series(dtype=float)
 
     max_rhat = float(rhat_values.max()) if not rhat_values.empty else np.nan
     min_ess = float(ess_values.min()) if not ess_values.empty else np.nan
@@ -935,7 +950,6 @@ def posterior_predict_batch(
     prices: np.ndarray,
     distributions: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Vectorized posterior prediction for many scenarios in one PyMC call."""
     model = result["model"]
     idata = result["idata"]
     entities = result["entities"]
@@ -1683,10 +1697,14 @@ def page_mapping() -> None:
 
 def fit_panel(data: pd.DataFrame, fingerprint_value: str) -> None:
     st.sidebar.subheader("Bayesian model")
+    
+    max_cores = max(1, os.cpu_count() or 1)
+    
     settings = {
         "draws": st.sidebar.select_slider("Posterior draws", options=[300, 500, 800, 1200], value=500),
         "tune": st.sidebar.select_slider("Tuning steps", options=[300, 500, 800, 1200], value=500),
         "chains": st.sidebar.selectbox("Chains", [2, 3, 4], index=0),
+        "cores": st.sidebar.slider("Sampling cores", min_value=1, max_value=max_cores, value=1, help="Increase for faster sampling if your system supports it. Leave at 1 if the app hangs."),
         "target_accept": st.sidebar.slider("Target acceptance", 0.85, 0.99, 0.92, 0.01),
         "prior_draws": st.sidebar.select_slider("Prior predictive draws", options=[50, 100, 200], value=100),
         "seed": RANDOM_SEED,
@@ -1724,7 +1742,9 @@ def main_app() -> None:
     elif not capabilities["Bayesian demand model"].available:
         st.sidebar.warning(capabilities["Bayesian demand model"].reason)
 
-    analysis_data = filter_context(data)
+    # Get UI filters and apply them cleanly
+    selections = get_filter_selections(data)
+    analysis_data = apply_context_filters(data, selections)
     model_result = st.session_state.model_result
 
     pages = ["Overview", "Performance"]
