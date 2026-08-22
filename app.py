@@ -841,19 +841,22 @@ def fit_bayesian_model(data: pd.DataFrame, settings: dict[str, Any]) -> dict[str
         standardization.update(time_mean=tm, time_sd=ts)
 
     entity_codes = None
-    entity_levels: list[str] = []
+    entity_levels = []
     if "entity_id" in subset.columns:
         entity_codes, entity_levels = pd.factorize(subset["entity_id"].astype(str))
+        entity_levels = entity_levels.tolist()
 
     retailer_codes = None
-    retailer_levels: list[str] = []
+    retailer_levels = []
     if complexity["retailer_effect"]:
         retailer_codes, retailer_levels = pd.factorize(subset["retailer"].astype(str))
+        retailer_levels = retailer_levels.tolist()
 
     season_codes = None
-    season_levels: list[int] = []
+    season_levels = []
     if complexity["season"]:
         season_codes, season_levels = pd.factorize(subset["period"].dt.month.astype(int))
+        season_levels = season_levels.tolist()
 
     coords: dict[str, Any] = {
         "obs": np.arange(len(subset)),
@@ -1002,7 +1005,10 @@ def sampling_diagnostics(idata: Any) -> tuple[pd.DataFrame, dict[str, Any]]:
     )
     bfmi_result = az.bfmi(idata)
 
-    if hasattr(bfmi_result, "to_array"):
+    # Handle different return types from az.bfmi (DataTree in newer ArviZ versions)
+    if hasattr(bfmi_result, "to_dataset"):
+        bfmi_values = np.asarray(bfmi_result.to_dataset()["energy"].values, dtype=float)
+    elif hasattr(bfmi_result, "to_array"):
         bfmi_values = np.asarray(bfmi_result.to_array(), dtype=float)
     elif hasattr(bfmi_result, "values"):
         bfmi_values = np.asarray(bfmi_result.values, dtype=float)
