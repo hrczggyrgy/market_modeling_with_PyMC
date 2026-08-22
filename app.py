@@ -884,6 +884,8 @@ def sampling_diagnostics(idata: Any) -> tuple[pd.DataFrame, dict[str, Any]]:
     # Handle both old (DataArray) and new (DataTree) return types
     if hasattr(bfmi_result, "to_array"):
         bfmi_values = np.asarray(bfmi_result.to_array(), dtype=float)
+    elif hasattr(bfmi_result, "values"):
+        bfmi_values = np.asarray(bfmi_result.values, dtype=float)
     else:
         bfmi_values = np.asarray(bfmi_result, dtype=float)
     min_bfmi = float(np.nanmin(bfmi_values)) if bfmi_values.size else np.nan
