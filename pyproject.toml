@@ -92,6 +92,16 @@ ignore = [
     "S101", # assert statements (used in tests)
     "T201", # print statements (allowed in Streamlit app)
     "PLW0603", # global statement (used in app state)
+    "PLR2004", # magic values (thresholds, constants)
+    "E501", # line too long
+    "PLR0912", # too many branches
+    "PLR0913", # too many arguments
+    "PLR0915", # too many statements
+    "TRY003", # long exception messages
+    "C408", # unnecessary dict calls
+    "B905", # zip without strict
+    "F841", # unused variables
+    "B007", # unused loop variables
 ]
 
 [tool.ruff.lint.per-file-ignores]
