@@ -1,0 +1,111 @@
+# Dependabot configuration for automated dependency updates
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # Python dependencies (pip)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "deps(pip)"
+      include: "scope"
+    reviewers:
+      - "yourusername"
+    assignees:
+      - "yourusername"
+    # Group related updates
+    groups:
+      streamlit-ecosystem:
+        patterns:
+          - "streamlit*"
+          - "plotly*"
+        update-types:
+          - "minor"
+          - "patch"
+      pymc-ecosystem:
+        patterns:
+          - "pymc*"
+          - "arviz*"
+          - "pytensor*"
+          - "aesara*"
+        update-types:
+          - "minor"
+          - "patch"
+      data-science:
+        patterns:
+          - "pandas*"
+          - "numpy*"
+          - "scipy*"
+        update-types:
+          - "minor"
+          - "patch"
+      dev-tools:
+        patterns:
+          - "ruff*"
+          - "black*"
+          - "mypy*"
+          - "pytest*"
+          - "pre-commit*"
+        update-types:
+          - "minor"
+          - "patch"
+    # Ignore major version updates for core dependencies (require manual review)
+    ignore:
+      - dependency-name: "streamlit"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "pymc"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "arviz"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "pandas"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "numpy"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "plotly"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "deps(gha)"
+      include: "scope"
+    reviewers:
+      - "yourusername"
+    assignees:
+      - "yourusername"
+
+  # Docker (if Dockerfile exists)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "deps(docker)"
+      include: "scope"
+    reviewers:
+      - "yourusername"
+    assignees:
+      - "yourusername"

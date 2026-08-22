@@ -6,7 +6,7 @@ import json
 import re
 import traceback
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import arviz as az
@@ -319,7 +319,7 @@ def infer_schema(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def default_mapping(inference: pd.DataFrame) -> dict[str, str | None]:
-    mapping = {role: None for role in SEMANTIC_ROLES}
+    mapping: dict[str, str | None] = dict.fromkeys(SEMANTIC_ROLES)
     used: set[str] = set()
     for _, row in inference.sort_values("Score", ascending=False).iterrows():
         role = row["Detected role"]
@@ -533,22 +533,22 @@ def filter_context(data: pd.DataFrame, key_prefix: str = "ctx") -> pd.DataFrame:
                 continue
             values = sorted(result[column].dropna().astype(str).unique().tolist())
             if len(values) <= 60:
-                selected = st.multiselect(
+                selected_values = st.multiselect(
                     human_role(column),
                     values,
                     default=values,
                     key=f"{key_prefix}_{column}",
                 )
-                if selected:
-                    result = result[result[column].astype(str).isin(selected)]
+                if selected_values:
+                    result = result[result[column].astype(str).isin(selected_values)]
             else:
-                selected = st.text_input(
+                search_text = st.text_input(
                     f"Search {human_role(column)}",
                     key=f"{key_prefix}_{column}_search",
                     placeholder="Type to filter...",
                 )
-                if selected:
-                    mask = result[column].astype(str).str.contains(selected, case=False, na=False)
+                if search_text:
+                    mask = result[column].astype(str).str.contains(search_text, case=False, na=False)
                     result = result[mask]
 
         if "period" in result.columns and result["period"].notna().any():
@@ -756,7 +756,7 @@ def fit_bayesian_model(data: pd.DataFrame, settings: dict[str, Any]) -> dict[str
     y = subset["quantity"].to_numpy(float)
     log_y = np.log(y)
 
-    with pm.Model(coords=coords, coords_mutable={"obs": np.arange(len(subset))}) as model:
+    with pm.Model(coords=coords) as model:
         x_price = pm.Data("x_price", predictor_data["price_centered"], dims="obs")
 
         alpha = pm.Normal("alpha", mu=float(np.mean(log_y)), sigma=1.5)
@@ -843,7 +843,7 @@ def fit_bayesian_model(data: pd.DataFrame, settings: dict[str, Any]) -> dict[str
         "season_levels": season_levels,
         "prior": prior,
         "fingerprint": None,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
 
@@ -883,8 +883,8 @@ def sampling_diagnostics(idata: Any) -> tuple[pd.DataFrame, dict[str, Any]]:
     bfmi_values = np.asarray(az.bfmi(idata), dtype=float)
     min_bfmi = float(np.nanmin(bfmi_values)) if bfmi_values.size else np.nan
 
-    rhat_values = summary["r_hat"].dropna() if "r_hat" in summary else pd.Series(dtype=float)
-    ess_values = summary["ess_bulk"].dropna() if "ess_bulk" in summary else pd.Series(dtype=float)
+    rhat_values = summary["r_hat"].dropna() if "r_hat" in summary.columns else pd.Series(dtype=float)  # type: ignore[call-arg]
+    ess_values = summary["ess_bulk"].dropna() if "ess_bulk" in summary.columns else pd.Series(dtype=float)  # type: ignore[call-arg]
 
     max_rhat = float(rhat_values.max()) if not rhat_values.empty else np.nan
     min_ess = float(ess_values.min()) if not ess_values.empty else np.nan
@@ -1190,8 +1190,8 @@ def page_pricing(data: pd.DataFrame, result: dict[str, Any]) -> None:
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Current price", f"${row['unit_price']:.2f}")
     col2.metric("Posterior elasticity", f"{np.median(elasticity_draws):.2f}")
-    col3.metric("P(elasticity < 0)", fmt_pct(np.mean(elasticity_draws < 0)))
-    col4.metric("P(elasticity < -1)", fmt_pct(np.mean(elasticity_draws < -1)))
+    col3.metric("P(elasticity < 0)", fmt_pct(float(np.mean(elasticity_draws < 0))))
+    col4.metric("P(elasticity < -1)", fmt_pct(float(np.mean(elasticity_draws < -1))))
 
     st.caption(
         f"{interpretation} · 90% credible interval [{np.quantile(elasticity_draws, 0.05):.2f}, {np.quantile(elasticity_draws, 0.95):.2f}]"
@@ -1254,8 +1254,8 @@ def page_pricing(data: pd.DataFrame, result: dict[str, Any]) -> None:
 
     a, b, c = st.columns(3)
     a.metric("Posterior-median revenue peak", f"${best_price:.2f}")
-    b.metric("Expected revenue change vs current", fmt_pct(np.median(scenario_revenue / baseline_revenue - 1)))
-    c.metric("P(revenue improves)", fmt_pct(np.mean(scenario_revenue > baseline_revenue)))
+    b.metric("Expected revenue change vs current", fmt_pct(float(np.median(scenario_revenue / baseline_revenue - 1))))
+    c.metric("P(revenue improves)", fmt_pct(float(np.mean(scenario_revenue > baseline_revenue))))
 
     st.caption("The revenue peak is a posterior scenario comparison, not a guaranteed optimal price. Uncertainty and model specification matter.")
 
@@ -1303,8 +1303,8 @@ def page_distribution(data: pd.DataFrame, result: dict[str, Any]) -> None:
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Current distribution", fmt_pct(current_distribution))
-    c2.metric("Illustrative +10pp response", fmt_pct(np.median(scenario_expected / current_expected - 1)))
-    c3.metric("P(improvement)", fmt_pct(np.mean(scenario_expected > current_expected)))
+    c2.metric("Illustrative +10pp response", fmt_pct(float(np.median(scenario_expected / current_expected - 1))))
+    c3.metric("P(improvement)", fmt_pct(float(np.mean(scenario_expected > current_expected))))
 
     st.info("Distribution results are model-implied observational relationships. They should not be interpreted as causal incremental sales without stronger identification.")
 
@@ -1391,12 +1391,12 @@ def page_scenarios(data: pd.DataFrame, result: dict[str, Any]) -> None:
     )
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Price change", fmt_pct(scenario_price / base_price - 1))
+    c1.metric("Price change", fmt_pct(float(scenario_price / base_price - 1)))
     if base_distribution is not None and scenario_distribution is not None:
-        c2.metric("Distribution change", fmt_pct(scenario_distribution - base_distribution))
+        c2.metric("Distribution change", fmt_pct(float(scenario_distribution - base_distribution)))
     else:
         c2.metric("Distribution change", "—")
-    c3.metric("P(sales improve)", fmt_pct(np.mean(scenario_revenue > baseline_revenue)))
+    c3.metric("P(sales improve)", fmt_pct(float(np.mean(scenario_revenue > baseline_revenue))))
 
     st.caption("Expected outcomes use posterior parameter uncertainty. Future realized demand additionally contains observation noise. The model is not refit for a scenario.")
 
@@ -1560,7 +1560,7 @@ def page_data(
 
 
 def initialize_state() -> None:
-    defaults = {
+    defaults: dict[str, Any] = {
         "stage": "choose",
         "raw": None,
         "data": None,
@@ -1576,7 +1576,7 @@ def initialize_state() -> None:
 
 
 def reset_dataset() -> None:
-    for key, value in {
+    reset_values: dict[str, Any] = {
         "stage": "choose",
         "raw": None,
         "data": None,
@@ -1586,7 +1586,8 @@ def reset_dataset() -> None:
         "model_result": None,
         "synthetic_truth": None,
         "error_detail": None,
-    }.items():
+    }
+    for key, value in reset_values.items():
         st.session_state[key] = value
 
 

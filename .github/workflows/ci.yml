@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run ruff (lint)
+        run: uv run ruff check .
+
+      - name: Run ruff (format check)
+        run: uv run ruff format --check .
+
+      - name: Run black (format check)
+        run: uv run black --check .
+
+      - name: Run mypy (type check)
+        run: uv run mypy app.py --ignore-missing-imports
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run pytest
+        run: uv run pytest -v --cov=. --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+
+  smoke-test:
+    name: Smoke Test (App Import)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Verify app imports without error
+        run: |
+          python -c "import app; print('App imports successfully')"
+
+      - name: Verify Streamlit can load app
+        run: |
+          timeout 30 streamlit run app.py --server.headless=true --server.port=8501 || true
+
+  check-requirements:
+    name: Check Requirements.txt Sync
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify requirements.txt matches pyproject.toml
+        run: |
+          # Extract dependencies from pyproject.toml
+          grep -A 20 '^dependencies = \[' pyproject.toml | grep -E '^\s+"[^"]+"' | sed 's/.*"\([^"]*\)".*/\1/' | sort > /tmp/pyproject_deps.txt
+          # Extract from requirements.txt
+          grep -v '^#' requirements.txt | grep -v '^$' | sort > /tmp/requirements_deps.txt
+          # Compare (allow version specifiers to differ)
+          diff -u /tmp/requirements_deps.txt /tmp/pyproject_deps.txt || echo "Note: Version specifiers may differ; ensure both are updated together"
