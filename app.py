@@ -963,7 +963,11 @@ def posterior_predict_batch(
     if "entity_idx" in model.named_vars:
         entity = str(row["entity_id"])
         if entity not in entities:
-            raise ValueError(f"Entity '{entity}' is not represented in the fitted model.")
+            raise ValueError(
+                f"Entity '{entity}' is not represented in the fitted model. "
+                f"Available entities: {', '.join(entities)}. "
+                f"Try resetting filters or re-fitting the model with this entity included."
+            )
         updates["entity_idx"] = np.full(n, entities.index(entity), dtype="int64")
 
     if "retailer_idx" in model.named_vars:
@@ -1739,11 +1743,11 @@ def main_app() -> None:
     elif selected_page == "Performance":
         page_performance(analysis_data)
     elif selected_page == "Pricing":
-        page_pricing(analysis_data, model_result)
+        page_pricing(data, model_result)
     elif selected_page == "Distribution":
-        page_distribution(analysis_data, model_result)
+        page_distribution(data, model_result)
     elif selected_page == "Scenarios":
-        page_scenarios(analysis_data, model_result)
+        page_scenarios(data, model_result)
     elif selected_page == "Model Health":
         page_model_health(model_result, st.session_state.synthetic_truth)
     elif selected_page == "Data":
