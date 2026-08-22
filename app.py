@@ -880,7 +880,12 @@ def sampling_diagnostics(idata: Any) -> tuple[pd.DataFrame, dict[str, Any]]:
     sample_stats = idata.sample_stats
 
     divergence_count = int(np.asarray(sample_stats["diverging"]).sum()) if "diverging" in sample_stats else 0
-    bfmi_values = np.asarray(az.bfmi(idata), dtype=float)
+    bfmi_result = az.bfmi(idata)
+    # Handle both old (DataArray) and new (DataTree) return types
+    if hasattr(bfmi_result, "to_array"):
+        bfmi_values = np.asarray(bfmi_result.to_array(), dtype=float)
+    else:
+        bfmi_values = np.asarray(bfmi_result, dtype=float)
     min_bfmi = float(np.nanmin(bfmi_values)) if bfmi_values.size else np.nan
 
     rhat_values = summary["r_hat"].dropna() if "r_hat" in summary.columns else pd.Series(dtype=float)  # type: ignore[call-arg]
